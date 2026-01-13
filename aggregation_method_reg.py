@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 from math import ceil
 import time as ts
 
@@ -10,7 +9,7 @@ from numba import njit
 from utilis_def import score_function, compute_scores, generate_simplex_grid
 
 
-def conformal_prediction(models, X_train, y_train, X_calib, y_calib, X_test, y_test, alpha=0.05, K=255, method='higher'):
+def run_baselines_and_sacp(models, X_calib, y_calib, X_test, y_test, alpha=0.05, K=255, method='higher'):
     """
         Compute conformal prediction using:
         - Split conformal prediction for individual base learners
@@ -19,10 +18,6 @@ def conformal_prediction(models, X_train, y_train, X_calib, y_calib, X_test, y_t
     """
     
     m_list = list(models.values())
-
-    # Train models
-    for model in m_list:
-        model.fit(X_train, y_train)
 
     # 1) Individual-model intervals based on quantile of calibration residuals
     q_levels = {}
@@ -39,7 +34,6 @@ def conformal_prediction(models, X_train, y_train, X_calib, y_calib, X_test, y_t
         coverages = (y_test >= lower) & (y_test <= upper)
         coverage = coverages.mean()
         avg_length = np.mean(upper - lower)
-        l1_res = np.mean(np.abs(y_test - y_pred))
        
         individual_results.append({
             'Model': name,
@@ -113,9 +107,10 @@ def conformal_prediction(models, X_train, y_train, X_calib, y_calib, X_test, y_t
 
 
 
-def run_CSA(models, X_train, y_train, X_calib, y_calib, X_test, y_test, alpha=0.05, K=1000, M=50, pct_split=0.5, method='higher', cond_cov=False):
+def run_CSA(models, X_calib, y_calib, X_test, y_test, alpha=0.05, K=255, M=50, pct_split=0.5, method='higher'):
     """
         Implementation of Conformal Prediction for Ensembles: Improving Efficiency via Score-Based Aggregation (CSA)
+
         Reference: https://arxiv.org/abs/2405.16246
     """
     # Split calibration set into two halves
@@ -173,16 +168,15 @@ def run_CSA(models, X_train, y_train, X_calib, y_calib, X_test, y_test, alpha=0.
     return coverage_test, avg_length
 
 
-def run_weighted_agg(models, X_train, y_train, X_calib, y_calib, X_test, y_test, alpha=0.05, K=1000, eps=0.01, method='higher', cond_cov=False):
+def run_WAgg(models, X_calib, y_calib, X_test, y_test, alpha=0.05, K=255, eps=0.01, method='higher'):
     """
         Weighted Aggregation of Conformity Scores for Classification (Wagg) - direct extension for regression.
         Validity-First Conformal Prediction (VFCP) for data splitting, which guarantees (1 - alpha) marginal coverage
 
-    Reference: https://arxiv.org/pdf/2407.10230
+        Reference: https://arxiv.org/pdf/2407.10230
     """
 
     n_test = X_test.shape[0]
-    model_list = list(models.values())
     d = len(list(models.values()))
     weights = generate_simplex_grid(d, eps=0.01)
 
@@ -287,7 +281,7 @@ def get_length_jit(p_value, preds_test, y_grid, s_calib, sums, y_test, q_idx2, s
     coverage = covered_mask.mean()
     return p_value, coverage, mean_length, covered_mask
 
-def find_p_optimized(models, X_calib, y_calib, X_test, y_test, name, K=255, alpha=0.05, method='higher', p_min=1.0, p_max=20.0, num_points=70, n_jobs=-1, cond_cov=False, verbose=True):
+def run_SACP_pp(models, X_calib, y_calib, X_test, y_test, K=255, alpha=0.05, method='higher', p_min=1.0, p_max=20.0, num_points=70, n_jobs=-1, verbose=True):
     """
         SACP++ method, implemented with parallelization for the grid search over p
     """
@@ -317,12 +311,13 @@ def find_p_optimized(models, X_calib, y_calib, X_test, y_test, name, K=255, alph
     _ = get_length_jit(p_values[0], preds_test, y_grid, s_calib, sums, y_test, q_idx2, step, method)
 
     t0 = ts.time()
+
     # Optionally track timing for each p-value
     def timed_get_length(p):
         if verbose:
             t1 = ts.time()
             result = get_length_jit(p, preds_test, y_grid, s_calib, sums, y_test, q_idx2, step, method)
-            # print(f"→ p = {p:.2f} done in {ts.time() - t1:.2f}s")
+            print(f"→ p = {p:.2f} done in {ts.time() - t1:.2f}s")
             return result
         else:
             return get_length_jit(p, preds_test, y_grid, s_calib, sums, y_test, q_idx2, step, method)

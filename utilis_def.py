@@ -25,6 +25,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import openml
 
 from modelscifar import resnet56, VGG, ShuffleNetV2, EfficientNetB0, DLA
 
@@ -51,6 +52,45 @@ def set_seed(seed):
 
     os.environ["PYTHONHASHSEED"] = str(seed)
     return g
+
+
+def load_dataset(name_or_id):
+    """Load dataset from OpenML by name or ID."""
+    task = openml.tasks.get_task(name_or_id)
+    features, targets = task.get_X_and_y(dataset_format='dataframe')
+    X, y = features.values, targets.values
+    return X, y
+
+
+def split_data(X, y, train_size=0.8, test_size=0.1, random_state=42):
+    """
+        Split & scale data in train / calib / test
+    """
+    
+    X_train, X_temp, y_train, y_temp = train_test_split(X, y, train_size=train_size, random_state=random_state)
+
+    categorical_cols = []
+    for i in range(X_train.shape[1]):
+        if isinstance(X_train[0, i], str):
+            categorical_cols.append(i)
+    X_train_clean = np.delete(X_train, categorical_cols, axis=1)
+    X_temp_clean = np.delete(X_temp, categorical_cols, axis=1)
+    te = test_size / (1 - train_size)
+    X_calib, X_test, y_calib, y_test = train_test_split(X_temp_clean, y_temp, test_size=te, random_state=random_state)
+    
+    X_scaler = StandardScaler()
+    X_train = X_scaler.fit_transform(X_train_clean)
+    X_calib = X_scaler.transform(X_calib)
+    X_test  = X_scaler.transform(X_test)
+
+    y_scaler = StandardScaler()
+    y_train = y_scaler.fit_transform(y_train.reshape(-1, 1)).ravel()
+    y_calib = y_scaler.transform(y_calib.reshape(-1, 1)).ravel()
+    y_test  = y_scaler.transform(y_test.reshape(-1, 1)).ravel()
+   
+    print(f"X_train shape: {X_train.shape}, calib shape: {X_calib.shape}, test shape: {X_test.shape}")
+    return (X_train, y_train, X_calib, y_calib, X_test, y_test)
+
 
 def score_function(y_pred, y_true, regression=True):
     """
