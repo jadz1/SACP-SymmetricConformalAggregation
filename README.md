@@ -36,11 +36,10 @@ The notebook runs the full pipeline across multiple OpenML regression datasets a
 - Train a set of base regressors (Linear, Lasso, RF, MLP, Bayesian Ridge, Boosting, SGD)
 - Compute uncertainty sets using:
   - Individual conformal predictors (per model)
-  - **SACP (ours)**
+  - **SACP / SACP++  (ours)**
   - CR / CM majority vote baselines
   - WAgg
   - CSA
-  - SACP++
 
 Results are stored in a pandas DataFrame with **coverage** and **average set length** for each method.
 
